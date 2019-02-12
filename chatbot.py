@@ -1,5 +1,6 @@
 from wxpy import *
 from os import *
+import time
 
 bot = Bot(cache_path=True)
 
@@ -7,6 +8,7 @@ fh = bot.file_helper
 
 #commands and aliases
 cmd = ('cmd', 'command')
+pycmd = ('py', 'python', 'pycmd', 'pythoncmd', 'pycommand', 'pythoncommand')
 ls = ('list', 'ls')
 record = ('record', 'rec')
 
@@ -14,11 +16,8 @@ class Record:
     def __init__(self, chat):
         self.chat = chat
         self.records = []
-        @bot.register(chat, except_self=False)
-        def forward(msg):
-            self.records.append(msg)
     
-    def log(self, chat):
+    def log(self, chat=fh):
         chat.send("Records at " + self.chat.name)
 
         for me in self.records:
@@ -33,22 +32,23 @@ class Record:
             elif me.type == SHARING: msg += me.url
 
             else: 
-                chat.send(msg)
-                me.raw.get('Text')(me.file_name)
-                chat.send_file(me.file_name)
-                remove(me.file_name)
-                return
+                msg += '[文件]'
             chat.send(msg)
-        
+            #避免过多请求
+            time.sleep(0.2)
+
         chat.send("End of records")
 
-records = [Record(fh)]
+    def __repr__(self):
+        return "Record<{}>".format(self.chat.name)
+
+records = {fh.name: Record(fh)}
 
 tuling = Tuling(api_key='7d394f8b700f474a9799b5b085ada4de')
 
 @bot.register(fh, except_self=False)
 def fh_forward(msg):
-
+    records[fh.name].records.append(msg)
     #其他消息类型处理
     if msg.type != TEXT:
         # tuling.do_reply(msg, at_member=False)
@@ -73,12 +73,31 @@ def fh_forward(msg):
             fh.send('list: unknown type: {}'.format(param))
 
     #command 'record'
-    elif pre in record:
-        records[0].log(fh)
+    elif pre in record: 
+        records[fh.name].log(fh)
     
+    #command 'py'
+    elif pre in pycmd:
+        try:
+            fh.send(eval(msg.text[len(pre) + 1:]))
+        except Exception as e:
+            fh.send("Python: " + str(e))
+
     #auto reply
     else:
-        tuling.do_reply(msg, at_member=False)
-        # fh.send('Unknown command: {}'.format(pre))
+        # tuling.do_reply(msg, at_member=False)
+        fh.send('Unknown command: {}'.format(pre))
+
+for f in bot.friends():
+    records[f.name] = Record(f) 
+
+for g in bot.groups():
+    records[g.name] = Record(g)
+
+@bot.register(bot.groups(), except_self=False)
+def forward_groups(msg):
+    records[msg.chat.name].records.append(msg)
+
+print(records)
 
 embed()
